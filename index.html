@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Penghitung Kecambah Kelapa Sawit</title>
+<style>
+  :root{
+    --bg:#f3f5ef; --panel:#ffffff; --ink:#1d2a1f; --muted:#5d6b5f;
+    --line:#d5dccf; --accent:#2f6b2f; --accent-ink:#ffffff; --warn:#b4531a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#141a15; --panel:#1d251e; --ink:#e8efe6; --muted:#9bab9d; --line:#2f3a30; --accent:#6fbf6f; --accent-ink:#0e170f; --warn:#e69a62; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+  header{padding:18px 20px 6px;max-width:1100px;margin:0 auto}
+  h1{margin:0;font-size:1.5rem;letter-spacing:-.01em}
+  header p{margin:4px 0 0;color:var(--muted);font-size:.95rem}
+  main{max-width:1100px;margin:0 auto;padding:12px 20px 40px;display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:18px}
+  @media (max-width:820px){main{grid-template-columns:1fr}}
+  .stage{background:#0c110d;border-radius:10px;overflow:hidden;position:relative;min-height:220px;border:1px solid var(--line)}
+  canvas{display:block;width:100%;height:auto}
+  .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#a9b8ab;padding:20px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .panel+.panel{margin-top:14px}
+  .count{font-size:3.4rem;font-weight:700;line-height:1;color:var(--accent)}
+  .count small{display:block;font-size:.9rem;font-weight:400;color:var(--muted);margin-top:6px}
+  .sub{display:flex;gap:18px;margin-top:12px;font-size:.95rem}
+  .sub b{font-size:1.2rem}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  button,label.btn{font:inherit;padding:9px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+  button.alt,label.btn.alt{background:transparent;color:var(--ink);border-color:var(--line)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button:focus-visible,label.btn:focus-within,input:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+  .row{margin-top:12px}
+  .row label{display:flex;justify-content:space-between;font-size:.9rem}
+  input[type=range]{width:100%}
+  .check{display:flex;gap:8px;align-items:center;font-size:.9rem;margin-top:10px}
+  #list{margin:8px 0 0;padding:0;list-style:none;max-height:190px;overflow:auto;font-size:.9rem}
+  #list li{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
+  .msg{color:var(--warn);font-size:.9rem;margin-top:10px;min-height:1.2em}
+  h2{font-size:1rem;margin:0 0 4px}
+  .hint{color:var(--muted);font-size:.85rem;margin:6px 0 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Penghitung Kecambah Kelapa Sawit</h1>
+  <p>Arahkan kamera ke biji kecambah. Setiap biji diberi kotak dan nomor otomatis.</p>
+</header>
+
+<main>
+  <section>
+    <div class="stage">
+      <canvas id="view" width="960" height="720"></canvas>
+      <div class="placeholder" id="ph">Kamera belum aktif. Tekan “Mulai kamera” atau unggah foto.</div>
+    </div>
+    <div class="btns">
+      <button id="btnStart">Mulai kamera</button>
+      <button id="btnFreeze" class="alt" disabled>Bekukan gambar</button>
+      <button id="btnStop" class="alt" disabled>Matikan kamera</button>
+      <label class="btn alt">Unggah foto<input type="file" id="file" accept="image/*" hidden></label>
+      <button id="btnSave" class="alt" disabled>Simpan hasil (PNG)</button>
+    </div>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <aside>
+    <div class="panel">
+      <div class="count"><span id="total">0</span><small>biji terdeteksi</small></div>
+      <div class="sub">
+        <div><b id="sprout">0</b><br>sudah bertunas</div>
+        <div><b id="nosprout">0</b><br>belum terlihat tunas</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Pengaturan deteksi</h2>
+      <div class="row"><label for="thr">Kepekaan warna latar <span id="thrV">25</span></label>
+        <input type="range" id="thr" min="5" max="80" value="25"></div>
+      <div class="row"><label for="minA">Ukuran minimum biji <span id="minAV">250</span></label>
+        <input type="range" id="minA" min="30" max="1500" value="250"></div>
+      <div class="row"><label for="maxA">Ukuran maksimum biji <span id="maxAV">9000</span></label>
+        <input type="range" id="maxA" min="1000" max="30000" value="9000" step="100"></div>
+      <label class="check"><input type="checkbox" id="showMask"> Tampilkan hasil pemisahan (mask)</label>
+      <p class="hint">Cocok untuk latar hijau polos. Jika serpihan kecil ikut terhitung, naikkan ukuran minimum. Jika dua biji menyatu, jauhkan jaraknya.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Daftar biji</h2>
+      <ul id="list"></ul>
+    </div>
+  </aside>
+</main>
+
+<script>
+(function(){
+  const view = document.getElementById('view');
+  const vctx = view.getContext('2d');
+  const video = document.createElement('video');
+  video.setAttribute('playsinline',''); video.muted = true;
+  const proc = document.createElement('canvas');
+  const pctx = proc.getContext('2d', {willReadFrequently:true});
+  const PW = 320;
+
+  const $ = id => document.getElementById(id);
+  const ui = {thr:$('thr'),minA:$('minA'),maxA:$('maxA'),mask:$('showMask'),msg:$('msg'),ph:$('ph')};
+  let stream=null, running=false, frozen=false, staticImg=null, lastTime=0;
+
+  ['thr','minA','maxA'].forEach(k=>{
+    const el=$(k), out=$(k+'V');
+    el.addEventListener('input',()=>{out.textContent=el.value; if(!running) redrawStatic();});
+  });
+  ui.mask.addEventListener('change',()=>{ if(!running) redrawStatic(); });
+
+  function setMsg(t){ ui.msg.textContent=t||''; }
+
+  async function startCamera(){
+    setMsg('');
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setMsg('Browser tidak mendukung kamera, atau halaman belum dibuka lewat HTTPS/localhost. Gunakan tombol “Unggah foto”.');
+      return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+      video.srcObject = stream;
+      await video.play();
+      staticImg=null; frozen=false; running=true;
+      ui.ph.style.display='none';
+      $('btnFreeze').disabled=false; $('btnStop').disabled=false; $('btnSave').disabled=false;
+      $('btnFreeze').textContent='Bekukan gambar';
+      requestAnimationFrame(loop);
+    }catch(e){
+      setMsg('Kamera tidak bisa dibuka: izinkan akses kamera di browser, lalu coba lagi.');
+    }
+  }
+
+  function stopCamera(){
+    running=false;
+    if(stream){stream.getTracks().forEach(t=>t.stop()); stream=null;}
+    $('btnFreeze').disabled=true; $('btnStop').disabled=true;
+  }
+
+  function loop(t){
+    if(!running) return;
+    if(!frozen && t-lastTime>120 && video.videoWidth){
+      lastTime=t;
+      const w=video.videoWidth, h=video.videoHeight;
+      const scale=Math.min(1,960/w);
+      view.width=Math.round(w*scale); view.height=Math.round(h*scale);
+      vctx.drawImage(video,0,0,view.width,view.height);
+      process(view);
+    }
+    requestAnimationFrame(loop);
+  }
+
+  $('btnStart').onclick=startCamera;
+  $('btnStop').onclick=stopCamera;
+  $('btnFreeze').onclick=()=>{
+    frozen=!frozen;
+    $('btnFreeze').textContent=frozen?'Lanjutkan live':'Bekukan gambar';
+  };
+
+  $('file').addEventListener('change',e=>{
+    const f=e.target.files[0]; if(!f) return;
+    stopCamera();
+    const img=new Image();
+    img.onload=()=>{
+      staticImg=img;
+      ui.ph.style.display='none';
+      $('btnSave').disabled=false;
+      redrawStatic();
+    };
+    img.src=URL.createObjectURL(f);
+    e.target.value='';
+  });
+
+  function redrawStatic(){
+    if(!staticImg) return;
+    const scale=Math.min(1,960/staticImg.naturalWidth);
+    view.width=Math.round(staticImg.naturalWidth*scale);
+    view.height=Math.round(staticImg.naturalHeight*scale);
+    vctx.drawImage(staticImg,0,0,view.width,view.height);
+    process(view);
+  }
+
+  function process(src){
+    const w=src.width, h=src.height;
+    const ph=Math.max(1,Math.round(PW*h/w));
+    proc.width=PW; proc.height=ph;
+    pctx.drawImage(src,0,0,PW,ph);
+    const d=pctx.getImageData(0,0,PW,ph).data;
+    const n=PW*ph;
+    const t=+ui.thr.value;
+    let mask=new Uint8Array(n);
+    const cream=new Uint8Array(n);
+
+    for(let i=0,p=0;i<n;i++,p+=4){
+      const r=d[p],g=d[p+1],b=d[p+2];
+      const isGreen = (g-r>t) && (g-b>t*0.3);
+      if(!isGreen) mask[i]=1;
+      if(r>150 && g>130 && r>=g-8 && b<g-25) cream[i]=1;
+    }
+
+    // dilasi 3x3 agar biji + tunas menyatu
+    const dil=new Uint8Array(n);
+    for(let y=1;y<ph-1;y++){
+      for(let x=1;x<PW-1;x++){
+        const i=y*PW+x;
+        if(mask[i]||mask[i-1]||mask[i+1]||mask[i-PW]||mask[i+PW]||mask[i-PW-1]||mask[i-PW+1]||mask[i+PW-1]||mask[i+PW+1]) dil[i]=1;
+      }
+    }
+
+    // komponen terhubung
+    const lab=new Int32Array(n);
+    const minA=+ui.minA.value, maxA=+ui.maxA.value;
+    const stack=new Int32Array(n);
+    const found=[];
+    for(let s=0;s<n;s++){
+      if(!dil[s]||lab[s]) continue;
+      let sp=0; stack[sp++]=s; lab[s]=1;
+      let area=0,x0=PW,y0=ph,x1=0,y1=0,cr=0;
+      while(sp){
+        const i=stack[--sp];
+        const x=i%PW, y=(i-x)/PW;
+        area++;
+        if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+        if(cream[i]) cr++;
+        for(let dy=-1;dy<=1;dy++){
+          const yy=y+dy; if(yy<0||yy>=ph) continue;
+          for(let dx=-1;dx<=1;dx++){
+            const xx=x+dx; if(xx<0||xx>=PW) continue;
+            const j=yy*PW+xx;
+            if(dil[j]&&!lab[j]){lab[j]=1; stack[sp++]=j;}
+          }
+        }
+      }
+      if(area>=minA && area<=maxA){
+        found.push({x0,y0,x1,y1,area,sprout:cr>=6});
+      }
+    }
+
+    found.sort((a,b)=>{
+      const ra=Math.round(a.y0/(ph/6)), rb=Math.round(b.y0/(ph/6));
+      return ra!==rb?ra-rb:a.x0-b.x0;
+    });
+
+    // gambar mask bila diminta
+    if(ui.mask.checked){
+      const id=vctx.createImageData(w,h);
+      for(let y=0;y<h;y++){
+        const sy=Math.min(ph-1,Math.floor(y*ph/h));
+        for(let x=0;x<w;x++){
+          const sx=Math.min(PW-1,Math.floor(x*PW/w));
+          const v=dil[sy*PW+sx]?255:20;
+          const o=(y*w+x)*4;
+          id.data[o]=v;id.data[o+1]=v;id.data[o+2]=v;id.data[o+3]=255;
+        }
+      }
+      vctx.putImageData(id,0,0);
+    }
+
+    const k=w/PW;
+    const lw=Math.max(2,w/320);
+    const fs=Math.max(14,Math.round(w/32));
+    vctx.font='bold '+fs+'px "Segoe UI",Arial,sans-serif';
+    vctx.textBaseline='top';
+    found.forEach((f,idx)=>{
+      const pad=3;
+      const X=Math.max(0,(f.x0-pad)*k), Y=Math.max(0,(f.y0-pad)*k);
+      const W=Math.min(w-X,(f.x1-f.x0+1+pad*2)*k), H=Math.min(h-Y,(f.y1-f.y0+1+pad*2)*k);
+      const col=f.sprout?'#ffd23f':'#4fd1ff';
+      vctx.lineWidth=lw; vctx.strokeStyle=col;
+      vctx.strokeRect(X,Y,W,H);
+      const label=String(idx+1);
+      const tw=vctx.measureText(label).width+10;
+      const th=fs+6;
+      const ly=Y-th>=0?Y-th:Y;
+      vctx.fillStyle=col;
+      vctx.fillRect(X,ly,tw,th);
+      vctx.fillStyle='#10200f';
+      vctx.fillText(label,X+5,ly+3);
+    });
+
+    const sp=found.filter(f=>f.sprout).length;
+    $('total').textContent=found.length;
+    $('sprout').textContent=sp;
+    $('nosprout').textContent=found.length-sp;
+    $('list').innerHTML=found.map((f,i)=>
+      '<li><span>Biji '+(i+1)+'</span><span>'+(f.sprout?'bertunas':'tunas belum terlihat')+'</span></li>').join('');
+  }
+
+  $('btnSave').onclick=()=>{
+    const a=document.createElement('a');
+    a.download='hasil-hitung-kecambah.png';
+    a.href=view.toDataURL('image/png');
+    a.click();
+  };
+})();
+</script>
+</body>
+</html>
